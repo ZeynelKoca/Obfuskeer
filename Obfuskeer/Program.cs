@@ -150,6 +150,10 @@ namespace Obfuscating_with_mono_cecil
                     if (t.Name.StartsWith("<")) continue;
                     ObfuscateAllFields(t);
 
+                    if (t.HasMethods)
+                        ObfuscateAllMethods(t);
+
+
                     ObfuscateAllProperties(t);
 
                 }
