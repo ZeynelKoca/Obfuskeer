@@ -1,24 +1,14 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Obfuscating_with_mono_cecil
+namespace Obfuskeer
 {
     class Encryptor
     {
-        public static Encryptor Instance
-        {
-            get
-            {
-                if (_instance == null)
-                    _instance = new Encryptor();
+        public static Encryptor Instance => _instance ??= new Encryptor();
 
-                return _instance;
-            }
-        }
-
-        private static Encryptor _instance = null;
+        private static Encryptor _instance;
 
         private char CipherHelper(char ch, int key)
         {
@@ -31,26 +21,28 @@ namespace Obfuscating_with_mono_cecil
 
         public string CaesarEncipher(string input, int key)
         {
-            string output = string.Empty;
-
-            foreach (char ch in input)
-                output += CipherHelper(ch, key);
-
-            return output;
+            return input.Aggregate(string.Empty, (current, ch) => current + CipherHelper(ch, key));
         }
 
+        public string Truncate(string value, int maxLength)
+        {
+            if (string.IsNullOrEmpty(value)) return value;
+            return value.Length <= maxLength ? value : value.Substring(0, maxLength);
+        }
 
         private byte[] GetHash(string inputString)
         {
-            using (HashAlgorithm algorithm = SHA256.Create())
-                return algorithm.ComputeHash(Encoding.UTF8.GetBytes(inputString));
+            using HashAlgorithm algorithm = SHA256.Create();
+            return algorithm.ComputeHash(Encoding.UTF8.GetBytes(inputString));
         }
 
         public string GetHashString(string inputString)
         {
             StringBuilder sb = new StringBuilder();
             foreach (byte b in GetHash(inputString))
+            {
                 sb.Append(b.ToString("X2"));
+            }
 
             return sb.ToString();
         }

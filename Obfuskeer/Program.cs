@@ -1,33 +1,25 @@
 ﻿using System;
+using System.Diagnostics;
+using System.IO;
 using System.Text;
 using Mono.Cecil;
-using System.Security.Cryptography;
-using System.Collections.Generic;
-using System.Linq;
-using System.Diagnostics;
 using Mono.Cecil.Cil;
-using System.Runtime.CompilerServices;
-using System.Reflection.Metadata.Ecma335;
-using System.IO;
-using System.Text.RegularExpressions;
 
-namespace Obfuscating_with_mono_cecil
+namespace Obfuskeer
 {
     class Program
     {
-        private static Obfuscator _obfuscator;
-        private static Stopwatch _timer;
-
-        private static AssemblyDefinition _assemblyDef;
-
         public static string FileName;
         public static string FilePath;
         public static string FileDirectory;
 
+        private static AssemblyDefinition _assemblyDef;
+        private static Obfuscator _obfuscator;
+        private static Stopwatch _timer;
 
         private static void InitConsole()
         {
-            Console.Title = "OBFUSKEER - An Obfuscator Tool";
+            Console.Title = "OBFUSKEER - A bad Obfuscation Tool";
             Console.ForegroundColor = ConsoleColor.Red;
             Console.WriteLine(@"
                          ██████╗ ██████╗ ███████╗██╗   ██╗███████╗██╗  ██╗███████╗███████╗██████╗ 
@@ -61,12 +53,6 @@ namespace Obfuscating_with_mono_cecil
 |___________________________________________________________________________________________________________________|");
             Console.WriteLine();
             Console.ForegroundColor = ConsoleColor.White;
-        }
-
-        private static string Truncate(string value, int maxLength)
-        {
-            if (string.IsNullOrEmpty(value)) return value;
-            return value.Length <= maxLength ? value : value.Substring(0, maxLength);
         }
 
         private static void ObfuscateAllMethods(TypeDefinition t)
@@ -123,14 +109,14 @@ namespace Obfuscating_with_mono_cecil
             Console.WriteLine($"Obfuscating all Strings for the method {m.Name}");
             ILProcessor ilp = m.Body.GetILProcessor();
 
-            for (int i = 0; i < m.Body.Instructions.Count; i++)
+            foreach (var instructionDef in m.Body.Instructions)
             {
-                Instruction instructionDef = m.Body.Instructions[i];
                 if (instructionDef.OpCode == OpCodes.Ldstr)
                 {
                     Console.Write($"Obfuscated '{instructionDef.Operand}' >> ");
-                    instructionDef.Operand = Convert.ToBase64String(Encoding.UTF8.GetBytes(instructionDef.Operand.ToString()));
-                    //ilp.InsertAfter(InstructionDef, Instruction.Create(OpCodes.Call, MD));
+                    instructionDef.Operand =
+                        Convert.ToBase64String(
+                            Encoding.UTF8.GetBytes(instructionDef.Operand.ToString() ?? string.Empty));
                     Console.WriteLine($"'{instructionDef.Operand}'");
                 }
                 else if (instructionDef.OpCode == OpCodes.Ldc_I4_0)
@@ -145,27 +131,36 @@ namespace Obfuscating_with_mono_cecil
         {
             foreach (TypeDefinition t in _assemblyDef.MainModule.Types)
             {
-                if (t.Name != "<Module>" && t.Namespace == "")//global type
+                if (t.Name.StartsWith("<")) continue;
+
+                ObfuscateAllFields(t);
+                if (t.HasMethods)
                 {
-                    if (t.Name.StartsWith("<")) continue;
-                    ObfuscateAllFields(t);
+                    foreach (var m in t.Methods)
+                    {
+                        if (m.FullName.ToLower().Contains("initguistrings") && m.HasBody)
+                        {
+                            ObfuscateAllStrings(m);
+                        }
+                    }
 
-                    if (t.HasMethods)
-                        ObfuscateAllMethods(t);
-
-
-                    ObfuscateAllProperties(t);
-
+                    ObfuscateAllMethods(t);
                 }
+
+                ObfuscateAllProperties(t);
+
+                _obfuscator.ObfuscateClass(t);
             }
         }
 
-        private static int init()
+        private static int Init()
         {
             _obfuscator = new Obfuscator();
             _timer = new Stopwatch();
 
             FilePath = Console.ReadLine();
+            if (FilePath == null) return 0;
+
             FilePath = FilePath.Replace("\"", "");
 
             if (File.Exists(FilePath))
@@ -180,27 +175,29 @@ namespace Obfuscating_with_mono_cecil
 
             if (Path.GetExtension(FilePath) != ".dll")
             {
-                Console.WriteLine("Inserted file isn't of a .dll or .exe filetype.");
+                Console.WriteLine("Inserted file isn't of a .dll or .exe file type.");
                 return 0;
             }
 
-            FileDirectory = FilePath.Replace(FileName, "");
+            FileDirectory = FilePath.Replace(FileName ?? string.Empty, "");
 
             var resolver = new DefaultAssemblyResolver();
             resolver.AddSearchDirectory(FileDirectory);
 
-            _assemblyDef = AssemblyDefinition.ReadAssembly(FilePath, new ReaderParameters { AssemblyResolver = resolver });
+            _assemblyDef =
+                AssemblyDefinition.ReadAssembly(FilePath, new ReaderParameters {AssemblyResolver = resolver});
+
             return 1;
         }
 
-        static void Main(string[] args)
+        static void Main()
         {
             InitConsole();
             Console.WriteLine("How to use: simply drag a file or paste a filepath in the console and press enter.");
             while (true)
             {
                 Console.Write("\nObfuskeer> ");
-                if (init() == 1)
+                if (Init() == 1)
                     break;
             }
 

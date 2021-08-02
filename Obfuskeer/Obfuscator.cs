@@ -1,28 +1,35 @@
-﻿using Mono.Cecil;
-using Mono.Cecil.Cil;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using Mono.Cecil;
+using Mono.Cecil.Cil;
 
-namespace Obfuscating_with_mono_cecil
+namespace Obfuskeer
 {
     class Obfuscator
     {
-        private List<string> fieldWords;
-        private List<string> methodWords;
+        private readonly List<string> _ignoredFieldWords;
+        private readonly List<string> _ignoredMethodWords;
 
         public Obfuscator()
         {
-            fieldWords = new List<string>() { "__", "incontrol", "enum", "optional" };
-            methodWords = new List<string>() { "__", "incontrol", "start", "stop", "update", "awake", "option" };
+            _ignoredFieldWords = new List<string>() { "__", "incontrol", "enum", "optional" };
+            _ignoredMethodWords = new List<string>() { "__", "incontrol", "start", "stop", "update", "fixedupdate", "lateupdate", "awake", "option", "pausemanager", "fallingrock", "postfix", "prefix", "transpiler" };
+        }
+
+        public void ObfuscateClass(TypeDefinition c)
+        {
+            Console.Write($"\nObfuscated Class '{c.Name}' >> ");
+            c.Name = "C" + Encryptor.Instance.GetHashString(c.Name);
+            Console.WriteLine($"'{c.Name}'");
         }
 
         public void ObfuscateField(FieldDefinition f)
         {
             string name = f.FullName.ToLower();
 
-            string res = fieldWords.Where(x => name.Contains(x)).FirstOrDefault();
+            string res = _ignoredFieldWords.FirstOrDefault(x => name.Contains(x));
             if (res != null)
                 return;
 
@@ -41,15 +48,30 @@ namespace Obfuscating_with_mono_cecil
 
         public void ObfuscateMethod(MethodDefinition m)
         {
-            string name = m.FullName.ToLower();
+            var name = m.FullName.ToLower();
 
-            string res = methodWords.Where(x => name.Contains(x)).FirstOrDefault();
+            var res = _ignoredMethodWords.FirstOrDefault(x => name.Contains(x));
             if (res != null || m.Name.ToLower().StartsWith("on"))
                 return;
 
             Console.Write($"Obfuscated Method '{m.Name}' >> ");
             m.Name = "M" + Encryptor.Instance.GetHashString(m.Name);
             Console.WriteLine($"'{m.Name}'");
+
+            if (m.HasParameters)
+            {
+                ObfuscateParameters(m);
+            }
+        }
+
+        private void ObfuscateParameters(MethodDefinition m)
+        {
+            foreach (var p in m.Parameters)
+            {
+                Console.Write($"Obfuscated parameter '{p.Name}' >> ");
+                p.Name = Encryptor.Instance.GetHashString(p.Name);
+                Console.WriteLine($"'{p.Name}'");
+            }
         }
 
         public void ObfuscateStrings(MethodDefinition m)
@@ -59,16 +81,16 @@ namespace Obfuscating_with_mono_cecil
                 Console.WriteLine($"\nObfuscating All Strings For The Method: {m.FullName}");
                 ILProcessor ilp = m.Body.GetILProcessor();
 
-                for (int i = 0; i < m.Body.Instructions.Count; i++)
+                foreach (var instructionDef in m.Body.Instructions)
                 {
-                    Instruction InstructionDef = m.Body.Instructions[i];
-                    if (InstructionDef.OpCode == OpCodes.Ldstr)
-                    {
-                        Console.Write($"Obfuscated '{InstructionDef.Operand}' >> ");
-                        InstructionDef.Operand = Convert.ToBase64String(Encoding.UTF8.GetBytes(InstructionDef.Operand.ToString()));
-                        ilp.InsertAfter(InstructionDef, Instruction.Create(OpCodes.Call));
-                        Console.WriteLine($"'{InstructionDef.Operand}'");
-                    }
+                    if (instructionDef.OpCode != OpCodes.Ldstr) continue;
+
+                    Console.Write($"Obfuscated '{instructionDef.Operand}' >> ");
+                    instructionDef.Operand =
+                        Convert.ToBase64String(
+                            Encoding.UTF8.GetBytes(instructionDef.Operand.ToString() ?? string.Empty));
+                    ilp.InsertAfter(instructionDef, Instruction.Create(OpCodes.Call));
+                    Console.WriteLine($"'{instructionDef.Operand}'");
                 }
             }
         }
