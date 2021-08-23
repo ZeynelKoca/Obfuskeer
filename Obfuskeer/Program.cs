@@ -19,7 +19,7 @@ namespace Obfuskeer
 
         private static void InitConsole()
         {
-            Console.Title = "OBFUSKEER - A bad Obfuscation Tool";
+            Console.Title = "OBFUSKEER";
             Console.ForegroundColor = ConsoleColor.Red;
             Console.WriteLine(@"
                          ██████╗ ██████╗ ███████╗██╗   ██╗███████╗██╗  ██╗███████╗███████╗██████╗ 
@@ -29,7 +29,7 @@ namespace Obfuskeer
                         ╚██████╔╝██████╔╝██║     ╚██████╔╝███████║██║  ██╗███████╗███████╗██║  ██║
                          ╚═════╝ ╚═════╝ ╚═╝      ╚═════╝ ╚══════╝╚═╝  ╚═╝╚══════╝╚══════╝╚═╝  ╚═╝"); // Ansi shadow
             Console.WriteLine(@"
-                         Created by Sisko
+                         Created by Zeynel Koca A.K.A. Sisko
 -----------------------------------------------------------------------------------------------------------------------
                          ");
             Console.ForegroundColor = ConsoleColor.White;
