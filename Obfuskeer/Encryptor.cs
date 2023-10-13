@@ -6,9 +6,18 @@ namespace Obfuskeer
 {
     class Encryptor
     {
-        public static Encryptor Instance => _instance ??= new Encryptor();
-
         private static Encryptor _instance;
+        public static Encryptor Instance
+        {
+            get
+            {
+                if (_instance == null)
+                {
+                    _instance = new Encryptor();
+                }
+                return _instance;
+            }
+        }
 
         private char CipherHelper(char ch, int key)
         {
@@ -32,8 +41,10 @@ namespace Obfuskeer
 
         private byte[] GetHash(string inputString)
         {
-            using HashAlgorithm algorithm = SHA256.Create();
-            return algorithm.ComputeHash(Encoding.UTF8.GetBytes(inputString));
+            using (SHA256 sha = SHA256.Create())
+            {
+                return sha.ComputeHash(Encoding.UTF8.GetBytes(inputString));
+            }
         }
 
         public string GetHashString(string inputString)

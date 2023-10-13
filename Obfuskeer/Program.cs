@@ -1,9 +1,10 @@
-﻿using System;
+﻿using Mono.Cecil;
+using Mono.Cecil.Cil;
+using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
-using Mono.Cecil;
-using Mono.Cecil.Cil;
 
 namespace Obfuskeer
 {
@@ -39,7 +40,7 @@ namespace Obfuskeer
         {
             Console.ForegroundColor = ConsoleColor.Green;
             string elapsed = "Total Time Taken: " + _timer.Elapsed.ToString(@"s\.ff") + "s";
-            Console.WriteLine(@$"
+            Console.WriteLine($@"
  ___________________________________________________________________________________________________________________
 |                                                                                                                   |
 |                                                                                                                   |   
@@ -109,21 +110,42 @@ namespace Obfuskeer
             Console.WriteLine($"Obfuscating all Strings for the method {m.Name}");
             ILProcessor ilp = m.Body.GetILProcessor();
 
-            foreach (var instructionDef in m.Body.Instructions)
+            for (int i = 0; i < m.Body.Instructions.Count; i++)
             {
-                if (instructionDef.OpCode == OpCodes.Ldstr)
+                var instructionDef = m.Body.Instructions[i];
+
+                if (instructionDef.OpCode != OpCodes.Ldstr) continue;
+                if (instructionDef.Operand.ToString().Contains("{") || instructionDef.Operand.ToString().Contains("}")) continue; // Don't obfuscate interpolated strings
+
+                Console.Write($"Obfuscated '{instructionDef.Operand}' >> ");
+                string originalString = instructionDef.Operand.ToString() ?? string.Empty;
+                string base64Encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(originalString));
+                Console.WriteLine($"'{base64Encoded}'");
+
+                // Get the methods we need to call
+                var getUtf8Method = m.Module.ImportReference(
+                    typeof(Encoding).GetProperty("UTF8").GetGetMethod());
+                var fromBase64Method = m.Module.ImportReference(
+                    typeof(Convert).GetMethod("FromBase64String", new[] { typeof(string) }));
+                var getStringMethod = m.Module.ImportReference(
+                    typeof(Encoding).GetMethod("GetString", new[] { typeof(byte[]) }));
+
+                // Inject new instructions to call Encoding.UTF8.GetString(Encoding.UTF8.GetBytes("base64Encoded"))
+                var modifiedInstructions = new List<Instruction>
                 {
-                    Console.Write($"Obfuscated '{instructionDef.Operand}' >> ");
-                    instructionDef.Operand =
-                        Convert.ToBase64String(
-                            Encoding.UTF8.GetBytes(instructionDef.Operand.ToString() ?? string.Empty));
-                    Console.WriteLine($"'{instructionDef.Operand}'");
-                }
-                else if (instructionDef.OpCode == OpCodes.Ldc_I4_0)
+                    Instruction.Create(OpCodes.Call, getUtf8Method),
+                    Instruction.Create(OpCodes.Ldstr, base64Encoded),
+                    Instruction.Create(OpCodes.Call, fromBase64Method),
+                    Instruction.Create(OpCodes.Callvirt, getStringMethod)
+                };
+
+                // Replace the original Ldstr instruction with the new instructions
+                foreach (var newInstr in modifiedInstructions)
                 {
-                    instructionDef.OpCode = OpCodes.Nop;
-                    ilp.InsertAfter(instructionDef, Instruction.Create(OpCodes.Ldc_I4_1));
+                    ilp.InsertBefore(instructionDef, newInstr);
                 }
+                ilp.Remove(instructionDef);
+                i += modifiedInstructions.Count - 1;  // Adjust index because of the new instructions
             }
         }
 
@@ -138,7 +160,7 @@ namespace Obfuskeer
                 {
                     foreach (var m in t.Methods)
                     {
-                        if (m.FullName.ToLower().Contains("initguistrings") && m.HasBody)
+                        if (m.HasBody)
                         {
                             ObfuscateAllStrings(m);
                         }
@@ -185,7 +207,7 @@ namespace Obfuskeer
             resolver.AddSearchDirectory(FileDirectory);
 
             _assemblyDef =
-                AssemblyDefinition.ReadAssembly(FilePath, new ReaderParameters {AssemblyResolver = resolver});
+                AssemblyDefinition.ReadAssembly(FilePath, new ReaderParameters { AssemblyResolver = resolver });
 
             return 1;
         }
