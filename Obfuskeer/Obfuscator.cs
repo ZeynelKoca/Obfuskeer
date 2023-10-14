@@ -18,20 +18,18 @@ namespace Obfuskeer
             _ignoredMethodWords = new List<string>() { "__", "incontrol", "start", "stop", "update", "fixedupdate", "lateupdate", "awake", "option", "pausemanager", "fallingrock", "postfix", "prefix", "transpiler" };
         }
 
-        public void ObfuscateClass(TypeDefinition c)
+        public void ObfuscateClassName(TypeDefinition c)
         {
             Console.Write($"\nObfuscated Class '{c.Name}' >> ");
             c.Name = "C" + Encryptor.Instance.GetHashString(c.Name);
             Console.WriteLine($"'{c.Name}'");
         }
 
-        public void ObfuscateField(FieldDefinition f)
+        public void ObfuscateFieldName(FieldDefinition f)
         {
             string name = f.FullName.ToLower();
 
-            string res = _ignoredFieldWords.FirstOrDefault(x => name.Contains(x));
-            if (res != null)
-                return;
+            if (_ignoredFieldWords.Any(x => name.Contains(x))) return;
 
             Console.Write($"Obfuscated Field '{f.Name}' >> ");
             f.Name = "F" + Encryptor.Instance.GetHashString(f.Name);
@@ -39,19 +37,18 @@ namespace Obfuskeer
 
         }
 
-        public void ObfuscateProperty(PropertyDefinition p)
+        public void ObfuscatePropertyName(PropertyDefinition p)
         {
             Console.Write($"Obfuscated Property '{p.Name}' >> ");
             p.Name = "P" + Encryptor.Instance.GetHashString(p.Name);
             Console.WriteLine($"'{p.Name}'");
         }
 
-        public void ObfuscateMethod(MethodDefinition m)
+        public void ObfuscateMethodName(MethodDefinition m)
         {
             var name = m.FullName.ToLower();
 
-            var res = _ignoredMethodWords.FirstOrDefault(x => name.Contains(x));
-            if (res != null || m.Name.ToLower().StartsWith("on"))
+            if (_ignoredMethodWords.Any(x => name.Contains(x)) || m.Name.ToLower().StartsWith("on"))
                 return;
 
             Console.Write($"Obfuscated Method '{m.Name}' >> ");
@@ -60,11 +57,11 @@ namespace Obfuskeer
 
             if (m.HasParameters)
             {
-                ObfuscateParameters(m);
+                ObfuscateParameterNames(m);
             }
         }
 
-        private void ObfuscateParameters(MethodDefinition m)
+        private void ObfuscateParameterNames(MethodDefinition m)
         {
             foreach (var p in m.Parameters)
             {
@@ -76,23 +73,66 @@ namespace Obfuskeer
 
         public void ObfuscateStrings(MethodDefinition m)
         {
-            if (m.FullName.ToLower().Contains("gamemanager::ongui") && m.HasBody)
+            if (ContainsBranchInstructions(m)) return; // Skip for now because this will break offset instructions and branch targets
+
+            Console.WriteLine($"Obfuscating all Strings for the method {m.Name}");
+            ILProcessor ilp = m.Body.GetILProcessor();
+
+            for (int i = 0; i < m.Body.Instructions.Count;)
             {
-                Console.WriteLine($"\nObfuscating All Strings For The Method: {m.FullName}");
-                ILProcessor ilp = m.Body.GetILProcessor();
+                var instructionDef = m.Body.Instructions[i];
 
-                foreach (var instructionDef in m.Body.Instructions)
+                if (instructionDef.OpCode != OpCodes.Ldstr ||
+                    instructionDef.Operand.ToString().Contains("{") || instructionDef.Operand.ToString().Contains("}")) // Don't obfuscate interpolated strings
                 {
-                    if (instructionDef.OpCode != OpCodes.Ldstr) continue;
-
-                    Console.Write($"Obfuscated '{instructionDef.Operand}' >> ");
-                    instructionDef.Operand =
-                        Convert.ToBase64String(
-                            Encoding.UTF8.GetBytes(instructionDef.Operand.ToString() ?? string.Empty));
-                    ilp.InsertAfter(instructionDef, Instruction.Create(OpCodes.Call));
-                    Console.WriteLine($"'{instructionDef.Operand}'");
+                    i++;
+                    continue;
                 }
+
+                Console.Write($"Obfuscated '{instructionDef.Operand}' >> ");
+                string originalString = instructionDef.Operand.ToString() ?? string.Empty;
+                string base64Encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(originalString));
+                Console.WriteLine($"'{base64Encoded}'");
+
+                // Get the methods we need to call
+                var getUtf8Method = m.Module.ImportReference(
+                    typeof(Encoding).GetProperty("UTF8").GetGetMethod());
+                var fromBase64Method = m.Module.ImportReference(
+                    typeof(Convert).GetMethod("FromBase64String", new[] { typeof(string) }));
+                var getStringMethod = m.Module.ImportReference(
+                    typeof(Encoding).GetMethod("GetString", new[] { typeof(byte[]) }));
+
+                // Inject new instructions to call Encoding.UTF8.GetString(Encoding.UTF8.GetBytes("base64Encoded"))
+                var modifiedInstructions = new List<Instruction>
+                {
+                    Instruction.Create(OpCodes.Call, getUtf8Method),
+                    Instruction.Create(OpCodes.Ldstr, base64Encoded),
+                    Instruction.Create(OpCodes.Call, fromBase64Method),
+                    Instruction.Create(OpCodes.Callvirt, getStringMethod)
+                };
+
+                // Replace the original Ldstr instruction with the new instructions
+                foreach (var newInstr in modifiedInstructions)
+                {
+                    ilp.InsertBefore(instructionDef, newInstr);
+                }
+                ilp.Remove(instructionDef);
+                i += modifiedInstructions.Count;  // Adjust index because of the new instructions
             }
         }
+
+        private bool ContainsBranchInstructions(MethodDefinition method)
+        {
+            foreach (Instruction instruction in method.Body.Instructions)
+            {
+                if (instruction.OpCode == OpCodes.Br || instruction.OpCode == OpCodes.Br_S)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
     }
 }

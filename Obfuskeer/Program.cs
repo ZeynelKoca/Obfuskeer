@@ -72,7 +72,13 @@ namespace Obfuskeer
                     if (m.Overrides.Count > 0) continue;
                     if (m.Name.StartsWith("<") || m.Name.ToLower().StartsWith("do")) continue;
 
-                    _obfuscator.ObfuscateMethod(m);
+                    if (m.HasBody)
+                    {
+                        //_obfuscator.ObfuscateStrings(m);
+                    }
+
+                    _obfuscator.ObfuscateMethodName(m);
+
                 }
             }
         }
@@ -89,7 +95,7 @@ namespace Obfuskeer
                     if (f.IsSpecialName) continue;
                     if (f.Name.StartsWith("<")) continue;
 
-                    _obfuscator.ObfuscateField(f);
+                    _obfuscator.ObfuscateFieldName(f);
                 }
             }
         }
@@ -101,51 +107,7 @@ namespace Obfuskeer
                 if (p.IsSpecialName) continue;
                 if (p.IsRuntimeSpecialName) continue;
 
-                _obfuscator.ObfuscateProperty(p);
-            }
-        }
-
-        private static void ObfuscateAllStrings(MethodDefinition m)
-        {
-            Console.WriteLine($"Obfuscating all Strings for the method {m.Name}");
-            ILProcessor ilp = m.Body.GetILProcessor();
-
-            for (int i = 0; i < m.Body.Instructions.Count; i++)
-            {
-                var instructionDef = m.Body.Instructions[i];
-
-                if (instructionDef.OpCode != OpCodes.Ldstr) continue;
-                if (instructionDef.Operand.ToString().Contains("{") || instructionDef.Operand.ToString().Contains("}")) continue; // Don't obfuscate interpolated strings
-
-                Console.Write($"Obfuscated '{instructionDef.Operand}' >> ");
-                string originalString = instructionDef.Operand.ToString() ?? string.Empty;
-                string base64Encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(originalString));
-                Console.WriteLine($"'{base64Encoded}'");
-
-                // Get the methods we need to call
-                var getUtf8Method = m.Module.ImportReference(
-                    typeof(Encoding).GetProperty("UTF8").GetGetMethod());
-                var fromBase64Method = m.Module.ImportReference(
-                    typeof(Convert).GetMethod("FromBase64String", new[] { typeof(string) }));
-                var getStringMethod = m.Module.ImportReference(
-                    typeof(Encoding).GetMethod("GetString", new[] { typeof(byte[]) }));
-
-                // Inject new instructions to call Encoding.UTF8.GetString(Encoding.UTF8.GetBytes("base64Encoded"))
-                var modifiedInstructions = new List<Instruction>
-                {
-                    Instruction.Create(OpCodes.Call, getUtf8Method),
-                    Instruction.Create(OpCodes.Ldstr, base64Encoded),
-                    Instruction.Create(OpCodes.Call, fromBase64Method),
-                    Instruction.Create(OpCodes.Callvirt, getStringMethod)
-                };
-
-                // Replace the original Ldstr instruction with the new instructions
-                foreach (var newInstr in modifiedInstructions)
-                {
-                    ilp.InsertBefore(instructionDef, newInstr);
-                }
-                ilp.Remove(instructionDef);
-                i += modifiedInstructions.Count - 1;  // Adjust index because of the new instructions
+                _obfuscator.ObfuscatePropertyName(p);
             }
         }
 
@@ -156,22 +118,12 @@ namespace Obfuskeer
                 if (t.Name.StartsWith("<")) continue;
 
                 ObfuscateAllFields(t);
-                if (t.HasMethods)
-                {
-                    foreach (var m in t.Methods)
-                    {
-                        if (m.HasBody)
-                        {
-                            ObfuscateAllStrings(m);
-                        }
-                    }
 
-                    ObfuscateAllMethods(t);
-                }
+                ObfuscateAllMethods(t);
 
                 ObfuscateAllProperties(t);
 
-                _obfuscator.ObfuscateClass(t);
+                _obfuscator.ObfuscateClassName(t);
             }
         }
 
