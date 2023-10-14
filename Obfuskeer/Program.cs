@@ -74,7 +74,7 @@ namespace Obfuskeer
 
                     if (m.HasBody)
                     {
-                        //_obfuscator.ObfuscateStrings(m);
+                        _obfuscator.ObfuscateStrings(m);
                     }
 
                     _obfuscator.ObfuscateMethodName(m);
